@@ -1,96 +1,106 @@
 # Load required libraries
 library(shiny)
-library(readr)
 library(dplyr)
-library(tidytext)
+library(readr)
 library(ggplot2)
 library(stringr)
 
-# Load stop words
-data("stop_words", package = "tidytext")
-
 # === Function to load all split abstract chunks ===
-load_abstract_chunks <- function(folder = "split_files", pattern = "^reporter_split_\\d+\\.csv$") {
+load_split_abstracts <- function(folder = "split_files", pattern = "^reporter_split_\\d+\\.csv$") {
   files <- list.files(folder, pattern = pattern, full.names = TRUE)
+  if (length(files) == 0) return(tibble(method = character()))
   
-  if (length(files) == 0) {
-    return(tibble(abstract = character()))
-  }
-  
-  data_list <- lapply(files, function(f) {
+  df_list <- lapply(files, function(f) {
     df <- read_csv(f, show_col_types = FALSE)
-    if ("abstract_text" %in% names(df)) {
+    if ("method" %in% names(df)) {
       df %>%
-        filter(!is.na(abstract_text), abstract_text != "") %>%
-        select(abstract = abstract_text)
+        filter(!is.na(method), method != "") %>%
+        select(method)
     } else {
-      tibble(abstract = character())
+      tibble(method = character())
     }
   })
   
-  bind_rows(data_list)
+  bind_rows(df_list)
 }
 
-# === Function to compute top terms ===
-get_top_terms <- function(df, n = 10) {
+# === Plot 1: Top methods ===
+plot_top_methods <- function(df) {
   df %>%
-    unnest_tokens(word, abstract) %>%
-    mutate(word = str_to_lower(word)) %>%
-    filter(!word %in% stop_words$word,
-           str_detect(word, "^[a-z]+$")) %>%
-    count(word, sort = TRUE) %>%
-    slice_head(n = n)
+    count(method = tolower(str_trim(method))) %>%
+    filter(!is.na(method), method != "") %>%
+    slice_max(n, n = 10) %>%
+    ggplot(aes(x = reorder(method, n), y = n)) +
+    geom_col(fill = "steelblue") +
+    coord_flip() +
+    labs(
+      title = "Top 10 Most Frequent Methods",
+      x = "Method",
+      y = "Count"
+    )
+}
+
+# === Plot 2: Keyword-matched common methods ===
+plot_common_methods <- function(df) {
+  common_keywords <- c(
+    "Mass Spectrometry" = "mass\\s*spec|mass spectrometry",
+    "Transcriptomics" = "transcriptomics|rna[- ]?seq|gene expression",
+    "Flow Cytometry" = "flow cytometry|facs",
+    "Western Blot" = "western blot",
+    "Microscopy" = "microscopy|confocal|fluorescence",
+    "Cryo-EM" = "cryo[- ]?em",
+    "PCR/qPCR" = "\\b(pcr|qpcr|real[- ]?time pcr)\\b"
+  )
+  
+  results <- lapply(names(common_keywords), function(label) {
+    pattern <- common_keywords[[label]]
+    count <- df %>%
+      filter(str_detect(tolower(method), pattern)) %>%
+      nrow()
+    tibble(method = label, count = count)
+  }) %>%
+    bind_rows()
+  
+  ggplot(results, aes(x = reorder(method, count), y = count)) +
+    geom_col(fill = "darkorange") +
+    coord_flip() +
+    labs(
+      title = "Keyword-Matched Common Methods",
+      x = "Method",
+      y = "Count"
+    )
 }
 
 # === UI ===
 ui <- fluidPage(
-  titlePanel("NIH Abstract Word Frequency (Local CSVs)"),
+  titlePanel("NIH Grant Method Frequency (2023–2024)"),
   sidebarLayout(
     sidebarPanel(
-      actionButton("load", "Load Abstracts from split_files/"),
-      textOutput("countText")
+      actionButton("analyze", "Analyze Split Files")
     ),
     mainPanel(
-      plotOutput("barPlot")
+      plotOutput("barPlot1"),
+      plotOutput("barPlot2")
     )
   )
 )
 
 # === Server ===
-server <- function(input, output, session) {
-  abstracts <- reactiveVal()
-  
-  observeEvent(input$load, {
-    showNotification("Loading abstracts from local files...", type = "message")
-    abs_df <- load_abstract_chunks()
-    abstracts(abs_df)
-    
-    if (nrow(abs_df) == 0) {
-      showNotification("No valid abstracts found in split_files/.", type = "error")
-    } else {
-      showNotification(paste("Loaded", nrow(abs_df), "abstracts."), type = "message")
-    }
+server <- function(input, output) {
+  method_data <- eventReactive(input$analyze, {
+    load_split_abstracts()
   })
   
-  output$countText <- renderText({
-    req(abstracts())
-    paste("Total abstracts loaded:", nrow(abstracts()))
+  output$barPlot1 <- renderPlot({
+    req(method_data())
+    plot_top_methods(method_data())
   })
   
-  output$barPlot <- renderPlot({
-    req(abstracts())
-    top_terms <- get_top_terms(abstracts(), n = 10)
-    
-    ggplot(top_terms, aes(x = reorder(word, n), y = n)) +
-      geom_col(fill = "steelblue") +
-      coord_flip() +
-      labs(
-        title = "Top 10 Most Frequent Words in NIH Abstracts",
-        x = "Word",
-        y = "Frequency"
-      )
+  output$barPlot2 <- renderPlot({
+    req(method_data())
+    plot_common_methods(method_data())
   })
 }
 
-# === Run the app ===
+# === Run App ===
 shinyApp(ui, server)
