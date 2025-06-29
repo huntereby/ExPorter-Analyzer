@@ -37,12 +37,16 @@ ui <- fluidPage(
 # === Server ===
 server <- function(input, output) {
   joined_data <- eventReactive(input$analyze, {
-    load_ic_data()
+    withProgress(message = "Loading split files...", {
+      load_ic_data()
+    })
   })
 
   tfidf_data <- reactive({
     req(joined_data())
-    get_ic_bigram_tfidf(joined_data())
+    withProgress(message = "Computing tf-idf...", {
+      get_ic_bigram_tfidf(joined_data())
+    })
   })
 
   output$ic_tabs <- renderUI({
@@ -52,7 +56,11 @@ server <- function(input, output) {
     tabs <- lapply(names(split_df), function(ic) {
       plotname <- paste0("plot_", ic)
       local_df <- split_df[[ic]]
-      output[[plotname]] <- renderPlot({ plot_ic(local_df, ic) })
+      output[[plotname]] <- renderPlot({
+        withProgress(message = paste("Rendering", ic, "plot..."), {
+          plot_ic(local_df, ic)
+        })
+      })
       tabPanel(ic, plotOutput(plotname))
     })
     do.call(tabsetPanel, tabs)
