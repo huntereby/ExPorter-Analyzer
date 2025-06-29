@@ -8,86 +8,54 @@ library(tidytext)
 
 source("method_utils.R")
 
-# === Function to load all split abstract chunks ===
-load_split_abstracts <- function(folder = "split_files", pattern = "^reporter_split_\\d+\\.csv$") {
+# === Function to load data joined with Administering IC ===
+load_ic_data <- function() {
   tryCatch(
-    read_split_files(folder, pattern),
-    error = function(e) tibble(id = integer(), abstract = character())
+    load_joined_data(),
+    error = function(e) tibble()
   )
 }
 
-# === Plot 1: Top methods ===
-plot_top_methods <- function(df) {
-  top_words <- get_top_methods(df, n = 10)
-  ggplot(top_words, aes(x = reorder(word, n), y = n)) +
-    geom_col(fill = "steelblue") +
-    coord_flip() +
-    labs(
-      title = "Top 10 Most Frequent Words",
-      x = "Word",
-      y = "Count"
-    )
-}
-
-# === Plot 2: Keyword-matched common methods ===
-plot_common_methods <- function(df) {
-  common_keywords <- c(
-    "Mass Spectrometry" = "mass\\s*spec|mass spectrometry",
-    "Transcriptomics" = "transcriptomics|rna[- ]?seq|gene expression",
-    "Flow Cytometry" = "flow cytometry|facs",
-    "Western Blot" = "western blot",
-    "Microscopy" = "microscopy|confocal|fluorescence",
-    "Cryo-EM" = "cryo[- ]?em",
-    "PCR/qPCR" = "\\b(pcr|qpcr|real[- ]?time pcr)\\b"
-  )
-  
-  results <- lapply(names(common_keywords), function(label) {
-    pattern <- common_keywords[[label]]
-    count <- df %>%
-      filter(str_detect(tolower(abstract), pattern)) %>%
-      nrow()
-    tibble(method = label, count = count)
-  }) %>%
-    bind_rows()
-  
-  ggplot(results, aes(x = reorder(method, count), y = count)) +
-    geom_col(fill = "darkorange") +
-    coord_flip() +
-    labs(
-      title = "Keyword-Matched Common Methods",
-      x = "Method",
-      y = "Count"
-    )
+# === Plot tf-idf bigrams for one IC ===
+plot_ic <- function(df, ic) {
+  plot_ic_tfidf(df, ic)
 }
 
 # === UI ===
 ui <- fluidPage(
-  titlePanel("NIH Grant Method Frequency (2023–2024)"),
+  titlePanel("NIH Grant Methods by Administering IC"),
   sidebarLayout(
     sidebarPanel(
       actionButton("analyze", "Analyze Split Files")
     ),
     mainPanel(
-      plotOutput("barPlot1"),
-      plotOutput("barPlot2")
+      uiOutput("ic_tabs")
     )
   )
 )
 
 # === Server ===
 server <- function(input, output) {
-  method_data <- eventReactive(input$analyze, {
-    load_split_abstracts()
+  joined_data <- eventReactive(input$analyze, {
+    load_ic_data()
   })
-  
-  output$barPlot1 <- renderPlot({
-    req(method_data())
-    plot_top_methods(method_data())
+
+  tfidf_data <- reactive({
+    req(joined_data())
+    get_ic_bigram_tfidf(joined_data())
   })
-  
-  output$barPlot2 <- renderPlot({
-    req(method_data())
-    plot_common_methods(method_data())
+
+  output$ic_tabs <- renderUI({
+    df <- tfidf_data()
+    req(nrow(df) > 0)
+    split_df <- split(df, df$ADMINISTERING_IC)
+    tabs <- lapply(names(split_df), function(ic) {
+      plotname <- paste0("plot_", ic)
+      local_df <- split_df[[ic]]
+      output[[plotname]] <- renderPlot({ plot_ic(local_df, ic) })
+      tabPanel(ic, plotOutput(plotname))
+    })
+    do.call(tabsetPanel, tabs)
   })
 }
 
