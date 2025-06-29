@@ -19,5 +19,6 @@ install.packages(c("shiny", "dplyr", "tidytext", "stringr", "ggplot2", "readr"))
 shiny::runApp("app.R")
 ```
 
-Press **Analyze Split Files** in the sidebar to read the CSV files and generate
-a bar chart of the most frequent words (methods) mentioned.
+When the app starts it automatically loads the CSV files, computes the top
+TF‑IDF bigrams for each Administering IC and caches the results. Use the
+dropdown menu to select an IC and view a bar plot of its top methods.
