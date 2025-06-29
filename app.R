@@ -4,38 +4,27 @@ library(dplyr)
 library(readr)
 library(ggplot2)
 library(stringr)
+library(tidytext)
+
+source("method_utils.R")
 
 # === Function to load all split abstract chunks ===
 load_split_abstracts <- function(folder = "split_files", pattern = "^reporter_split_\\d+\\.csv$") {
-  files <- list.files(folder, pattern = pattern, full.names = TRUE)
-  if (length(files) == 0) return(tibble(method = character()))
-  
-  df_list <- lapply(files, function(f) {
-    df <- read_csv(f, show_col_types = FALSE)
-    if ("method" %in% names(df)) {
-      df %>%
-        filter(!is.na(method), method != "") %>%
-        select(method)
-    } else {
-      tibble(method = character())
-    }
-  })
-  
-  bind_rows(df_list)
+  tryCatch(
+    read_split_files(folder, pattern),
+    error = function(e) tibble(id = integer(), abstract = character())
+  )
 }
 
 # === Plot 1: Top methods ===
 plot_top_methods <- function(df) {
-  df %>%
-    count(method = tolower(str_trim(method))) %>%
-    filter(!is.na(method), method != "") %>%
-    slice_max(n, n = 10) %>%
-    ggplot(aes(x = reorder(method, n), y = n)) +
+  top_words <- get_top_methods(df, n = 10)
+  ggplot(top_words, aes(x = reorder(word, n), y = n)) +
     geom_col(fill = "steelblue") +
     coord_flip() +
     labs(
-      title = "Top 10 Most Frequent Methods",
-      x = "Method",
+      title = "Top 10 Most Frequent Words",
+      x = "Word",
       y = "Count"
     )
 }
@@ -55,7 +44,7 @@ plot_common_methods <- function(df) {
   results <- lapply(names(common_keywords), function(label) {
     pattern <- common_keywords[[label]]
     count <- df %>%
-      filter(str_detect(tolower(method), pattern)) %>%
+      filter(str_detect(tolower(abstract), pattern)) %>%
       nrow()
     tibble(method = label, count = count)
   }) %>%
