@@ -5,6 +5,7 @@ library(dplyr)
 library(tidytext)
 library(stringr)
 library(ggplot2)
+library(tidyr)
 
 #' Read all CSVs from a folder and combine into a single data frame
 #'
@@ -97,9 +98,14 @@ load_joined_data <- function(abstract_folder = "split_files",
 #' @param df Data frame returned by `load_joined_data()`
 #' @param n Number of bigrams to keep for each IC
 #' @return Data frame with columns ADMINISTERING_IC, bigram and tf_idf
+#'   (bigrams containing common stop words are removed)
 get_ic_bigram_tfidf <- function(df, n = 10) {
   df %>%
     unnest_tokens(bigram, abstract, token = "ngrams", n = 2) %>%
+    separate(bigram, into = c("word1", "word2"), sep = " ") %>%
+    filter(!word1 %in% stop_words$word,
+           !word2 %in% stop_words$word) %>%
+    unite(bigram, word1, word2, sep = " ") %>%
     count(ADMINISTERING_IC, bigram, sort = TRUE) %>%
     bind_tf_idf(bigram, ADMINISTERING_IC, n) %>%
     arrange(ADMINISTERING_IC, desc(tf_idf)) %>%
