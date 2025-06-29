@@ -8,13 +8,9 @@ library(tidytext)
 
 source("method_utils.R")
 
-# === Function to load data joined with Administering IC ===
-load_ic_data <- function() {
-  tryCatch(
-    load_joined_data(),
-    error = function(e) tibble()
-  )
-}
+# === Precompute tf-idf list ===
+ic_data <- tryCatch(load_joined_data(), error = function(e) tibble())
+tfidf_list <- if (nrow(ic_data) > 0) precompute_ic_tfidf_list(ic_data, n = 10) else list()
 
 # === Plot tf-idf bigrams for one IC ===
 plot_ic <- function(df, ic) {
@@ -26,44 +22,21 @@ ui <- fluidPage(
   titlePanel("NIH Grant Methods by Administering IC"),
   sidebarLayout(
     sidebarPanel(
-      actionButton("analyze", "Analyze Split Files")
+      selectInput("ic_select", "Administering IC", choices = names(tfidf_list))
     ),
     mainPanel(
-      uiOutput("ic_tabs")
+      plotOutput("tfidfPlot")
     )
   )
 )
 
 # === Server ===
-server <- function(input, output) {
-  joined_data <- eventReactive(input$analyze, {
-    withProgress(message = "Loading split files...", {
-      load_ic_data()
-    })
-  })
-
-  tfidf_data <- reactive({
-    req(joined_data())
-    withProgress(message = "Computing tf-idf...", {
-      get_ic_bigram_tfidf(joined_data())
-    })
-  })
-
-  output$ic_tabs <- renderUI({
-    df <- tfidf_data()
+server <- function(input, output, session) {
+  output$tfidfPlot <- renderPlot({
+    req(input$ic_select)
+    df <- tfidf_list[[input$ic_select]]
     req(nrow(df) > 0)
-    split_df <- split(df, df$ADMINISTERING_IC)
-    tabs <- lapply(names(split_df), function(ic) {
-      plotname <- paste0("plot_", ic)
-      local_df <- split_df[[ic]]
-      output[[plotname]] <- renderPlot({
-        withProgress(message = paste("Rendering", ic, "plot..."), {
-          plot_ic(local_df, ic)
-        })
-      })
-      tabPanel(ic, plotOutput(plotname))
-    })
-    do.call(tabsetPanel, tabs)
+    plot_ic(df, input$ic_select)
   })
 }
 

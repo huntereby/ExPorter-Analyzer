@@ -125,3 +125,13 @@ plot_ic_tfidf <- function(df, ic) {
     coord_flip() +
     labs(title = paste("Top Methods -", ic), x = "Bigram", y = "tf-idf")
 }
+
+#' Precompute a named list of tf-idf results for each Administering IC
+#'
+#' @param df Data frame returned by `load_joined_data()`
+#' @param n Number of bigrams to keep for each IC
+#' @return Named list where each element is a tibble of the top `n` bigrams
+precompute_ic_tfidf_list <- function(df, n = 10) {
+  tfidf <- get_ic_bigram_tfidf(df, n)
+  split(tfidf, tfidf$ADMINISTERING_IC)
+}
