@@ -6,24 +6,38 @@ library(tidytext)
 library(ggplot2)
 library(stringr)
 
-# Fetch abstracts for the provided fiscal years
-fetch_abstracts <- function(fy = c(2023, 2024), limit = 500) {
-  url <- "https://api.reporter.nih.gov/v2/projects/search"
-  body <- list(
-    criteria = list(
-      fiscal_years = fy
-    ),
-    include_fields = list("abstract_text"),
-    limit = limit
-  )
-  res <- POST(url, body = body, encode = "json")
-  stop_for_status(res)
-  data <- content(res, as = "parsed")
-  if (!is.null(data$results)) {
-    tibble(abstract = vapply(data$results, function(x) x$abstract_text, character(1)))
-  } else {
-    tibble(abstract = character())
+library(readr)
+library(dplyr)
+
+# === Settings ===
+split_folder <- "split_files"               # Folder with split CSVs
+file_pattern <- "reporter_split_.*\\.csv"   # Regex pattern to match files
+
+# === List Files ===
+files <- list.files(split_folder, pattern = file_pattern, full.names = TRUE)
+
+# === Loop through each split file ===
+for (file in files) {
+  cat("Processing:", file, "\n")
+  
+  # Read the file
+  chunk_df <- read_csv(file, show_col_types = FALSE)
+  
+  # Example operation: print summary or count abstracts
+  cat("Rows:", nrow(chunk_df), " | Columns:", ncol(chunk_df), "\n")
+  
+  # You could also:
+  # - Push each to Git one at a time
+  # - Clean/standardize
+  # - Extract keywords or save a summary
+
+  # For example: count how many abstracts are not empty
+  if ("abstract_text" %in% names(chunk_df)) {
+    valid_abstracts <- sum(!is.na(chunk_df$abstract_text) & chunk_df$abstract_text != "")
+    cat("Valid abstracts:", valid_abstracts, "\n")
   }
+  
+  cat("-----\n")
 }
 
 # Prepare word frequency table
